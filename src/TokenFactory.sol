@@ -4,8 +4,15 @@ pragma solidity ^0.8.26;
 import "./Token.sol";
 import "dependencies/@uniswap-v2-core-1.0.1/contracts/interfaces/IUniswapV2Factory.sol";
 import "dependencies/@uniswap-v2-periphery-1.1.0-beta.0/contracts/interfaces/IUniswapV2Router02.sol";
+import "dependencies/@uniswap-v2-core-1.0.1/contracts/interfaces/IUniswapV2Pair.sol";
 
 contract TokenFactory {
+
+    enum TokenState {
+        NOT_CREATED,
+        ICO,
+        TRADING
+    }
 
     uint256 public constant DECIMALS = 10 ** 18;
     uint256 public constant MAX_SUPPLY = (10 ** 9) * DECIMALS;
@@ -18,20 +25,21 @@ contract TokenFactory {
     address public constant UNISWAP_FACTORY_ADDRESS = 0xB7f907f7A9eBC822a80BD25E224be42Ce0A698A0;
     address public constant UNISWAP_ROUTER_ADDRESS = 0x425141165d3DE9FEC831896C016617a52363b687;
 
-    mapping(address => bool) public tokens;
+    mapping(address => TokenState) public tokens;
     mapping(address => uint256) public collateral;
     mapping(address => mapping(address => uint256)) public balances;
+    
 
     function createToken(string memory name, string memory ticker) public returns (address){
         Token token = new Token(name, ticker, INITIAL_MINT);
-        tokens[address(token)] = true;
+        tokens[address(token)] = TokenState.ICO;
         return address(token);
     }
 
     function buy(address tokenAddress, uint256 amount) external payable {
-        require(tokens[tokenAddress] == true , "Token not found");
+        require(tokens[tokenAddress] == TokenState.ICO , "Token does not exist or not in ICO state");
         Token token = Token(tokenAddress);
-        uint256 availableSupply = MAX_SUPPLY - INITIAL_MINT - token.totalSupply();
+        uint256 availableSupply = MAX_SUPPLY - token.totalSupply() - INITIAL_MINT;
         require(availableSupply >= amount, "Not enough supply");
 
         // calculate required amount of ether to buy
@@ -43,8 +51,11 @@ contract TokenFactory {
 
         if(collateral[tokenAddress] >= FUNDING_GOAL){
             // create Liquidity Pool
+           address pool =  _createLiquidityPool(tokenAddress);
             // provide liquidity
+           uint256 liquidity =  _provideLiquidity(tokenAddress, INITIAL_MINT , collateral[tokenAddress]);
             // burn liquidity tokens
+            _burnLpTokens(pool, liquidity);
         }
 
     }
@@ -68,7 +79,16 @@ contract TokenFactory {
         return (b - a) * (f_a + f_b) / (2 * SCALING_FACTOR);
     }
 
-    function createLiquidityPool(address tokenAddress) external returns (address){
+    function withdraw(address tokenAddress, address receipient) external {
+        require(tokens[tokenAddress] == TokenState.TRADING, "Token doesn't exist or has not reached trading state");
+        uint256 amount = balances[tokenAddress][msg.sender];
+        require(amount > 0, "No balance to withdraw");
+        balances[tokenAddress][msg.sender] = 0;
+        Token token = Token(tokenAddress);
+        token.transfer(receipient, amount);
+    }
+
+    function _createLiquidityPool(address tokenAddress) internal returns (address){
         require(collateral[tokenAddress] >= FUNDING_GOAL, "Not enough collateral");
         Token token = Token(tokenAddress);
         // create liquidity pool
@@ -78,6 +98,27 @@ contract TokenFactory {
         IUniswapV2Router02 router = IUniswapV2Router02(UNISWAP_ROUTER_ADDRESS);
         address pair = factory.createPair(tokenAddress, router.WETH());
         return pair;
+    }
+
+    function _provideLiquidity(address tokenAddress, uint256 tokenAmount, uint256 ethAmount) internal returns (uint) {
+        Token token = Token(tokenAddress);
+        IUniswapV2Router02 router = IUniswapV2Router02(UNISWAP_ROUTER_ADDRESS);
+        token.approve(UNISWAP_ROUTER_ADDRESS, tokenAmount);
+        (uint amountToken, uint amountETH, uint liquidity) = router.addLiquidityETH{ value : ethAmount}(
+            tokenAddress,
+            tokenAmount,
+            tokenAmount,
+            ethAmount,
+            address(this),
+            block.timestamp
+        );
+        return liquidity;
+
+        }
+
+    function _burnLpTokens(address poolAddress, uint256 amount) internal {
+        IUniswapV2Pair pool = IUniswapV2Pair(poolAddress);
+        pool.transfer(address(0), amount);
     }
 
 }

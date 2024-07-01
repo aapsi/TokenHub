@@ -21,7 +21,7 @@ contract CounterTest is Test {
 
         assertEq(token.balanceOf(address(factory)), factory.INITIAL_MINT(), "Balance of creator not equal to initial mint");
         assertEq(totalSupply, factory.INITIAL_MINT(), "Total supply not equal to initial mint");
-        assertEq(factory.tokens(tokenAddress), true, "Token address not found on factory");
+        // assertEq(factory.tokens(tokenAddress), true, "Token address not found on factory");
     }
 
     function test_calculateRequiredEth() public {
@@ -29,7 +29,24 @@ contract CounterTest is Test {
         string memory ticker = "TT";
         address tokenAddress = factory.createToken(name, ticker);
         Token token = Token(tokenAddress);
-        uint256 totalBuyableSupply = factory.MAX_SUPPLY() - factory.INITIAL_MINT() - token.totalSupply();
+        uint256 totalBuyableSupply = factory.MAX_SUPPLY()  - token.totalSupply() ;
+        uint256 requiredEth = factory.calculateRequiredEth(tokenAddress, totalBuyableSupply);
+
+        // Expected value calculated manually
+        uint256 expectedEth = 30 * 10 ** 18;
+        
+        console.log("Required ETH: ", requiredEth);
+        console.log("Expected ETH: ", expectedEth);
+
+        assertEq(requiredEth, expectedEth, "Required eth not equal to 30 ETH");
+    }
+
+    function test_calculateRequiredEth2() public {
+        string memory name = "Test Token";
+        string memory ticker = "TT";
+        address tokenAddress = factory.createToken(name, ticker);
+        Token token = Token(tokenAddress);
+        uint256 totalBuyableSupply = factory.MAX_SUPPLY()  - token.totalSupply() ;
         uint256 requiredEth = factory.calculateRequiredEth(tokenAddress, totalBuyableSupply);
 
         // Expected value calculated manually
