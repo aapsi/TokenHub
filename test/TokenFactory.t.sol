@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.26;
 
 import {Test, console} from "forge-std/Test.sol";
 import {TokenFactory} from "../src/TokenFactory.sol";
@@ -22,5 +22,22 @@ contract CounterTest is Test {
         assertEq(token.balanceOf(address(factory)), factory.INITIAL_MINT(), "Balance of creator not equal to initial mint");
         assertEq(totalSupply, factory.INITIAL_MINT(), "Total supply not equal to initial mint");
         assertEq(factory.tokens(tokenAddress), true, "Token address not found on factory");
+    }
+
+    function test_calculateRequiredEth() public {
+        string memory name = "Test Token";
+        string memory ticker = "TT";
+        address tokenAddress = factory.createToken(name, ticker);
+        Token token = Token(tokenAddress);
+        uint256 totalBuyableSupply = factory.MAX_SUPPLY() - factory.INITIAL_MINT() - token.totalSupply();
+        uint256 requiredEth = factory.calculateRequiredEth(tokenAddress, totalBuyableSupply);
+
+        // Expected value calculated manually
+        uint256 expectedEth = 30 * 10 ** 18;
+        
+        console.log("Required ETH: ", requiredEth);
+        console.log("Expected ETH: ", expectedEth);
+
+        assertEq(requiredEth, expectedEth, "Required eth not equal to 30 ETH");
     }
 }
